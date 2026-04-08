@@ -72,16 +72,11 @@ app.post('/', async (req, res) => {
     if (req.body.type !== 'message') return;
     if (!req.body.source || !req.body.source.userId) return;
 
-    const userId = req.body.source.userId;
     const accessToken = await getAccessToken();
-    await sendHelloWorld(userId, accessToken);
-
+    await sendHelloWorld(req.body.source.userId, accessToken);
     console.log('Hello World送信成功');
   } catch (e) {
-    console.error(
-      'エラー:',
-      e.response?.data || e.response?.status || e.message
-    );
+    console.error('エラー:', e.response?.data || e.message);
   }
 });
 
