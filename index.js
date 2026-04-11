@@ -54,7 +54,7 @@ async function getAccessToken() {
   return response.data.access_token;
 }
 
-// メッセージ送信
+// ユーザーにメッセージ送信
 async function sendMessage(userId, token, text) {
   await axios.post(
     `https://www.worksapis.com/v1.0/bots/${BOT_ID}/users/${userId}/messages`,
@@ -84,15 +84,15 @@ app.post('/', async (req, res) => {
 
     const userId = req.body.source.userId;
     const token = await getAccessToken();
-    await sendMessage(userId, token, 'Hello World');
 
+    await sendMessage(userId, token, 'Hello World');
     console.log('✅ Hello World送信成功');
   } catch (e) {
     console.error('❌ エラー:', e.response?.data || e.message);
   }
 });
 
-// Cron専用の定期送信
+// 定期送信用
 app.get('/send-scheduled', async (req, res) => {
   try {
     const token = await getAccessToken();
@@ -111,6 +111,7 @@ app.get('/send-scheduled', async (req, res) => {
   }
 });
 
+// 動作確認
 app.get('/', (req, res) => {
   res.send('Hello World Server');
 });
