@@ -10,6 +10,7 @@ const CLIENT_SECRET = process.env.LW_CLIENT_SECRET;
 const SERVICE_ACCOUNT = process.env.LW_SERVICE_ACCOUNT;
 const PRIVATE_KEY = process.env.LW_PRIVATE_KEY;
 const BOT_ID = process.env.LW_BOT_ID;
+const TARGET_USER_ID = process.env.LW_TARGET_USER_ID;
 
 // Access Token取得
 async function getAccessToken() {
@@ -39,7 +40,6 @@ async function getAccessToken() {
   params.append('client_id', CLIENT_ID);
   params.append('client_secret', CLIENT_SECRET);
   params.append('assertion', assertion);
-  params.append('scope', 'bot'); // ←重要
 
   const response = await axios.post(
     'https://auth.worksmobile.com/oauth2/v2.0/token',
@@ -55,13 +55,13 @@ async function getAccessToken() {
 }
 
 // メッセージ送信
-async function sendMessage(userId, token) {
+async function sendMessage(userId, token, text) {
   await axios.post(
     `https://www.worksapis.com/v1.0/bots/${BOT_ID}/users/${userId}/messages`,
     {
       content: {
         type: 'text',
-        text: 'Hello World'
+        text
       }
     },
     {
@@ -73,10 +73,9 @@ async function sendMessage(userId, token) {
   );
 }
 
-// メイン処理
+// 通常のBot返信
 app.post('/', async (req, res) => {
   console.log('受信:', JSON.stringify(req.body, null, 2));
-
   res.sendStatus(200);
 
   try {
@@ -84,20 +83,34 @@ app.post('/', async (req, res) => {
     if (!req.body.source?.userId) return;
 
     const userId = req.body.source.userId;
-
     const token = await getAccessToken();
-    await sendMessage(userId, token);
+    await sendMessage(userId, token, 'Hello World');
 
     console.log('✅ Hello World送信成功');
   } catch (e) {
-    console.error(
-      '❌ エラー:',
-      e.response?.data || e.message
-    );
+    console.error('❌ エラー:', e.response?.data || e.message);
   }
 });
 
-// 動作確認用
+// Cron専用の定期送信
+app.get('/send-scheduled', async (req, res) => {
+  try {
+    const token = await getAccessToken();
+
+    const text = `【定期送信】
+本日は定例案内日です。
+必要事項の確認をお願いします。`;
+
+    await sendMessage(TARGET_USER_ID, token, text);
+
+    console.log('✅ 定期送信成功');
+    res.status(200).send('OK');
+  } catch (e) {
+    console.error('❌ 定期送信失敗:', e.response?.data || e.message);
+    res.status(500).send('ERROR');
+  }
+});
+
 app.get('/', (req, res) => {
   res.send('Hello World Server');
 });
