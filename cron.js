@@ -1,7 +1,9 @@
+const express = require('express');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
 
-console.log('CRON VERSION 3');
+const app = express();
+app.use(express.json());
 
 const CLIENT_ID = process.env.LW_CLIENT_ID;
 const CLIENT_SECRET = process.env.LW_CLIENT_SECRET;
@@ -9,26 +11,8 @@ const SERVICE_ACCOUNT = process.env.LW_SERVICE_ACCOUNT;
 const PRIVATE_KEY = process.env.LW_PRIVATE_KEY;
 const BOT_ID = process.env.LW_BOT_ID;
 const TARGET_USER_ID = process.env.LW_TARGET_USER_ID;
-const TARGET_ROOM_ID = process.env.LW_TARGET_ROOM_ID;
 
-console.log('CLIENT_ID exists:', !!CLIENT_ID);
-console.log('CLIENT_SECRET exists:', !!CLIENT_SECRET);
-console.log('SERVICE_ACCOUNT exists:', !!SERVICE_ACCOUNT);
-console.log('PRIVATE_KEY exists:', !!PRIVATE_KEY);
-console.log('BOT_ID exists:', !!BOT_ID);
-console.log('TARGET_USER_ID exists:', !!TARGET_USER_ID);
-console.log('TARGET_ROOM_ID exists:', !!TARGET_ROOM_ID);
-
-if (CLIENT_ID) {
-  console.log('CLIENT_ID head:', CLIENT_ID.slice(0, 6));
-}
-if (SERVICE_ACCOUNT) {
-  console.log('SERVICE_ACCOUNT:', SERVICE_ACCOUNT);
-}
-if (BOT_ID) {
-  console.log('BOT_ID:', BOT_ID);
-}
-
+// Access Token取得
 async function getAccessToken() {
   const now = Math.floor(Date.now() / 1000);
 
@@ -44,20 +28,18 @@ async function getAccessToken() {
     .replace(/\\n/g, '\n')
     .trim();
 
-  console.log('PRIVATE_KEY has BEGIN:', privateKey.includes('BEGIN PRIVATE KEY'));
-  console.log('PRIVATE_KEY has END:', privateKey.includes('END PRIVATE KEY'));
-
   const assertion = jwt.sign(payload, privateKey, {
     algorithm: 'RS256'
   });
 
   const params = new URLSearchParams();
-  params.append('grant_type', 'urn:ietf:params:oauth:grant-type:jwt-bearer');
+  params.append(
+    'grant_type',
+    'urn:ietf:params:oauth:grant-type:jwt-bearer'
+  );
   params.append('client_id', CLIENT_ID);
   params.append('client_secret', CLIENT_SECRET);
   params.append('assertion', assertion);
-
-  console.log('Requesting access token...');
 
   const response = await axios.post(
     'https://auth.worksmobile.com/oauth2/v2.0/token',
@@ -72,44 +54,46 @@ async function getAccessToken() {
   return response.data.access_token;
 }
 
-async function sendMessage(accessToken, text) {
-  const headers = {
-    Authorization: `Bearer ${accessToken}`,
-    'Content-Type': 'application/json'
-  };
-
-  if (TARGET_ROOM_ID) {
-    await axios.post(
-      `https://www.worksapis.com/v1.0/bots/${BOT_ID}/channels/${TARGET_ROOM_ID}/messages`,
-      {
-        content: {
-          type: 'text',
-          text
-        }
-      },
-      { headers }
-    );
-    return;
-  }
-
-  if (TARGET_USER_ID) {
-    await axios.post(
-      `https://www.worksapis.com/v1.0/bots/${BOT_ID}/users/${TARGET_USER_ID}/messages`,
-      {
-        content: {
-          type: 'text',
-          text
-        }
-      },
-      { headers }
-    );
-    return;
-  }
-
-  throw new Error('LW_TARGET_USER_ID または LW_TARGET_ROOM_ID を設定してください');
+// メッセージ送信
+async function sendMessage(userId, token, text) {
+  await axios.post(
+    `https://www.worksapis.com/v1.0/bots/${BOT_ID}/users/${userId}/messages`,
+    {
+      content: {
+        type: 'text',
+        text
+      }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
 }
 
-(async () => {
+// 通常のBot返信
+app.post('/', async (req, res) => {
+  console.log('受信:', JSON.stringify(req.body, null, 2));
+  res.sendStatus(200);
+
+  try {
+    if (req.body.type !== 'message') return;
+    if (!req.body.source?.userId) return;
+
+    const userId = req.body.source.userId;
+    const token = await getAccessToken();
+    await sendMessage(userId, token, 'Hello World');
+
+    console.log('✅ Hello World送信成功');
+  } catch (e) {
+    console.error('❌ エラー:', e.response?.data || e.message);
+  }
+});
+
+// Cron専用の定期送信
+app.get('/send-scheduled', async (req, res) => {
   try {
     const token = await getAccessToken();
 
@@ -117,11 +101,20 @@ async function sendMessage(accessToken, text) {
 本日は定例案内日です。
 必要事項の確認をお願いします。`;
 
-    await sendMessage(token, text);
-    console.log('✅ 送信成功');
-    process.exit(0);
+    await sendMessage(TARGET_USER_ID, token, text);
+
+    console.log('✅ 定期送信成功');
+    res.status(200).send('OK');
   } catch (e) {
-    console.error('❌ 送信失敗:', e.response?.data || e.message);
-    process.exit(1);
+    console.error('❌ 定期送信失敗:', e.response?.data || e.message);
+    res.status(500).send('ERROR');
   }
-})();
+});
+
+app.get('/', (req, res) => {
+  res.send('Hello World Server');
+});
+
+app.listen(10000, () => {
+  console.log('Server started');
+});
